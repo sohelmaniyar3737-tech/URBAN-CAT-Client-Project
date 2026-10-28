@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  name        String      @db.VarChar(120)
+  slug        String      @unique @db.VarChar(120)
+  description String      @default("") @db.VarChar(2000)
+  category    String      @db.VarChar(60)
+  price       Float
+  discountPercent Float @default(0)
+  image       String      @default("")
+  galleryImages String[]  @default([])
+  sizes       String[]    @default(["S", "M", "L", "XL"])
+  colours     String[]    @default(["Black", "White"])
+  published   Boolean     @default(true)
+  badge       String      @default("") @db.VarChar(30)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  orderItems  OrderItem[]
+
+  @@index([published, createdAt])
+  @@index([category])
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  userId      String?
+  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orderNumber String      @unique @db.VarChar(40)
+  name        String      @db.VarChar(120)
+  phone       String      @db.VarChar(30)
+  email       String      @default("") @db.VarChar(200)
+  address     String      @db.VarChar(500)
+  city        String      @db.VarChar(100)
+  state       String      @db.VarChar(100)
+  pincode     String      @db.VarChar(12)
+  total       Float
+  status      String      @default("Pending confirmation") @db.VarChar(40)
+  paymentStatus String    @default("unpaid") @db.VarChar(30)
+  paymentMethod String    @default("manual") @db.VarChar(30)
+  razorpayOrderId String? @unique @db.VarChar(80)
+  razorpayPaymentId String? @unique @db.VarChar(80)
+  items        OrderItem[]
+statusEvents OrderStatusEvent[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([userId, createdAt])
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  productId String?
+  name      String   @db.VarChar(120)
+  price     Float
+  quantity  Int
+  size      String   @db.VarChar(10)
+  colour    String   @db.VarChar(40)
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model OrderStatusEvent {
+  id        String   @id @default(cuid())
+  orderId   String
+  status    String   @db.VarChar(40)
+  note      String   @default("") @db.VarChar(200)
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+}
+
+
+model User {
+  id           String   @id @default(cuid())
+  name         String   @db.VarChar(120)
+  email        String   @unique @db.VarChar(200)
+  passwordHash String
+  role         String   @default("customer") @db.VarChar(20)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orders       Order[]
+}
