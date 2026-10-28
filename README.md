@@ -55,19 +55,14 @@ Make sure you have installed:
 - npm
 - PostgreSQL database
 
-### 1. Clone the repository
 
-```bash
-git clone https://github.com/YOUR-USERNAME/urban-cat.git
-```
-
-### 2. Navigate to the project
+### 1. Navigate to the project
 
 ```bash
 cd urban-cat
 ```
 
-### 3. Install dependencies
+### 2. Install dependencies
 
 Install the root dependencies if applicable:
 
@@ -89,7 +84,7 @@ cd ../server
 npm install
 ```
 
-### 4. Configure environment variables
+### 3. Configure environment variables
 
 Create `.env` files inside the `client` and `server` folders.
 
@@ -110,7 +105,7 @@ Configure the required backend environment variables, including:
 
 **Never commit real credentials or secret keys to GitHub.**
 
-### 5. Start the application
+### 4. Start the application
 
 Start the backend:
 
