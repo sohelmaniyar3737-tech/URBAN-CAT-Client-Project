@@ -3,55 +3,56 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
 model Product {
-  id          String      @id @default(cuid())
-  name        String      @db.VarChar(120)
-  slug        String      @unique @db.VarChar(120)
-  description String      @default("") @db.VarChar(2000)
-  category    String      @db.VarChar(60)
-  price       Float
-  discountPercent Float @default(0)
-  image       String      @default("")
-  galleryImages String[]  @default([])
-  sizes       String[]    @default(["S", "M", "L", "XL"])
-  colours     String[]    @default(["Black", "White"])
-  published   Boolean     @default(true)
-  badge       String      @default("") @db.VarChar(30)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  orderItems  OrderItem[]
+  id              String      @id @default(cuid())
+  name            String      @db.VarChar(120)
+  slug            String      @unique @db.VarChar(120)
+  description     String      @default("") @db.VarChar(2000)
+  category        String      @db.VarChar(60)
+  price           Float
+  discountPercent Float       @default(0)
+  image           String      @default("")
+  galleryImages   String[]    @default([])
+  sizes           String[]    @default(["S", "M", "L", "XL"])
+  colours         String[]    @default(["Black", "White"])
+  published       Boolean     @default(true)
+  badge           String      @default("") @db.VarChar(30)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  orderItems      OrderItem[]
+  cartItems       CartItem[]
 
   @@index([published, createdAt])
   @@index([category])
 }
 
 model Order {
-  id          String      @id @default(cuid())
-  userId      String?
-  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  orderNumber String      @unique @db.VarChar(40)
-  name        String      @db.VarChar(120)
-  phone       String      @db.VarChar(30)
-  email       String      @default("") @db.VarChar(200)
-  address     String      @db.VarChar(500)
-  city        String      @db.VarChar(100)
-  state       String      @db.VarChar(100)
-  pincode     String      @db.VarChar(12)
-  total       Float
-  status      String      @default("Pending confirmation") @db.VarChar(40)
-  paymentStatus String    @default("unpaid") @db.VarChar(30)
-  paymentMethod String    @default("manual") @db.VarChar(30)
-  razorpayOrderId String? @unique @db.VarChar(80)
-  razorpayPaymentId String? @unique @db.VarChar(80)
-  items        OrderItem[]
-statusEvents OrderStatusEvent[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id                String             @id @default(cuid())
+  userId            String?
+  user              User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orderNumber       String             @unique @db.VarChar(40)
+  name              String             @db.VarChar(120)
+  phone             String             @db.VarChar(30)
+  email             String             @default("") @db.VarChar(200)
+  address           String             @db.VarChar(500)
+  city              String             @db.VarChar(100)
+  state             String             @db.VarChar(100)
+  pincode           String             @db.VarChar(12)
+  total             Float
+  status            String             @default("Pending confirmation") @db.VarChar(40)
+  paymentStatus     String             @default("unpaid") @db.VarChar(30)
+  paymentMethod     String             @default("manual") @db.VarChar(30)
+  razorpayOrderId   String?            @unique @db.VarChar(80)
+  razorpayPaymentId String?            @unique @db.VarChar(80)
+  items             OrderItem[]
+  statusEvents      OrderStatusEvent[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   @@index([createdAt])
   @@index([status])
@@ -86,7 +87,6 @@ model OrderStatusEvent {
   @@index([orderId, createdAt])
 }
 
-
 model User {
   id           String   @id @default(cuid())
   name         String   @db.VarChar(120)
@@ -95,6 +95,31 @@ model User {
   role         String   @default("customer") @db.VarChar(20)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-
+  cart         Cart?
   orders       Order[]
+}
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  productId String
+  quantity  Int      @default(1)
+  size      String   @db.VarChar(10)
+  colour    String   @db.VarChar(40)
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId, size, colour])
+  @@index([productId])
 }

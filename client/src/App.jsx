@@ -235,7 +235,95 @@ const [myOrdersError, setMyOrdersError] = useState('');
 
   }
 
+  
+async function cartRequest(path = '', options = {}, token = customerToken) {
+  if (!token) throw new Error('Please log in first.');
+
+  const response = await fetch(`${API}/cart${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+      Authorization: `Bearer ${token}`
+    }
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.message || 'Cart request failed.');
+  }
+
+  return data;
+}
+
+async function loadCustomerCart(token) {
+  try {
+    const data = await cartRequest('', {}, token);
+    setCart(data.items || []);
+  } catch (error) {
+    setToast(error.message || 'Could not load saved cart.');
+  }
+}
+
+async function saveProductToCart(product, size, colour) {
+  if (customerToken) {
+    const data = await cartRequest('/items', {
+      method: 'POST',
+      body: JSON.stringify({
+        productId: product._id,
+        quantity: 1,
+        size,
+        colour
+      })
+    });
+
+    setCart(data.items || []);
+    return;
+  }
+
+  // Guest cart remains temporary.
+  const key = `${product._id}-${size}-${colour}`;
+
+  setCart((current) => {
+    const existing = current.find((item) => item.key === key);
+
+    if (existing) {
+      return current.map((item) =>
+        item.key === key
+          ? { ...item, quantity: Math.min(20, item.quantity + 1) }
+          : item
+      );
+    }
+
+    return [
+      ...current,
+      {
+        key,
+        productId: product._id,
+        name: product.name,
+        price: Number(product.price || 0),
+        discountedPrice: getDiscountedPrice(product),
+        discountPercent: Number(product.discountPercent || 0),
+        image: product.image || '',
+        quantity: 1,
+        size,
+        colour
+      }
+    ];
+  });
+}
+
+
   useEffect(() => { loadProducts(); }, []);
+
+  useEffect(() => {
+  if (customerToken) {
+    loadCustomerCart(customerToken);
+  } else {
+    setCart([]);
+  }
+}, [customerToken]);
 
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(''), 3200); return () => clearTimeout(id); }, [toast]);
 
@@ -280,19 +368,22 @@ const [myOrdersError, setMyOrdersError] = useState('');
     return () => window.removeEventListener('popstate', syncProductFromUrl);
   }, [products]);
 
-  function addPreviewToCart() {
-    if (!previewProduct) return;
-    const product = previewProduct;
-    const key = `${product._id}-${selectedSize}-${selectedColour}`;
-    setCart((current) => {
-      const existing = current.find((item) => item.key === key);
-      return existing
-        ? current.map((item) => item.key === key ? { ...item, quantity: Math.min(20, item.quantity + 1) } : item)
-        : [...current, { key, productId: product._id, name: product.name, price: Number(product.price || 0), discountedPrice: getDiscountedPrice(product), discountPercent: Number(product.discountPercent || 0), image: product.image || '', quantity: 1, size: selectedSize, colour: selectedColour }];
-    });
+  async function addPreviewToCart() {
+  if (!previewProduct) return;
+
+  try {
+    await saveProductToCart(
+      previewProduct,
+      selectedSize,
+      selectedColour
+    );
+
     closeProductPreview();
-    setToast(`${product.name} · ${selectedSize} · ${selectedColour} added to bag`);
+    setToast(`${previewProduct.name} added to bag`);
+  } catch (error) {
+    setToast(error.message);
   }
+}
 
   function buyPreviewNow() {
     if (!previewProduct) return;
@@ -317,33 +408,79 @@ const [myOrdersError, setMyOrdersError] = useState('');
 
   }
 
-  function addToCart() {
+  async function addToCart() {
+  if (!variantProduct) return;
 
-    if (!variantProduct) return;
+  try {
+    await saveProductToCart(
+      variantProduct,
+      selectedSize,
+      selectedColour
+    );
 
-    const product = variantProduct;
-
-    const key = `${product._id}-${selectedSize}-${selectedColour}`;
-
-    setCart((current) => {
-
-      const existing = current.find((item) => item.key === key);
-
-      return existing
-
-        ? current.map((item) => item.key === key ? { ...item, quantity: Math.min(20, item.quantity + 1) } : item)
-
-        : [...current, { key, productId: product._id, name: product.name, price: Number(product.price || 0), discountedPrice: getDiscountedPrice(product), discountPercent: Number(product.discountPercent || 0), image: product.image || '', quantity: 1, size: selectedSize, colour: selectedColour }];
-
-    });
-
+    setToast(`${variantProduct.name} added to bag`);
     setVariantProduct(null);
-
-    setToast(`${product.name} · ${selectedSize} · ${selectedColour} added to bag`);
-
+  } catch (error) {
+    setToast(error.message);
   }
+}
 
-  function changeQty(key, delta) { setCart((current) => current.map((item) => item.key === key ? { ...item, quantity: item.quantity + delta } : item).filter((item) => item.quantity > 0 && item.quantity <= 20)); }
+
+  async function changeQty(key, delta) {
+  const item = cart.find((entry) => entry.key === key);
+  if (!item) return;
+
+  const quantity = item.quantity + delta;
+
+  try {
+    if (customerToken) {
+      if (quantity <= 0) {
+        const data = await cartRequest(`/items/${item.id}`, {
+          method: 'DELETE'
+        });
+        setCart(data.items || []);
+      } else {
+        const data = await cartRequest(`/items/${item.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ quantity })
+        });
+        setCart(data.items || []);
+      }
+    } else {
+      setCart((current) =>
+        current
+          .map((entry) =>
+            entry.key === key
+              ? { ...entry, quantity }
+              : entry
+          )
+          .filter((entry) => entry.quantity > 0 && entry.quantity <= 20)
+      );
+    }
+  } catch (error) {
+    setToast(error.message);
+  }
+}
+
+async function removeCartItem(key) {
+  const item = cart.find((entry) => entry.key === key);
+  if (!item) return;
+
+  try {
+    if (customerToken) {
+      const data = await cartRequest(`/items/${item.id}`, {
+        method: 'DELETE'
+      });
+      setCart(data.items || []);
+    } else {
+      setCart((current) =>
+        current.filter((entry) => entry.key !== key)
+      );
+    }
+  } catch (error) {
+    setToast(error.message);
+  }
+}
 
 
 
@@ -756,17 +893,15 @@ async function submitCustomerAuth(event) {
 
 
 function customerLogout() {
-
   sessionStorage.removeItem('uc-customer-token');
-
   sessionStorage.removeItem('uc-customer');
 
   setCustomerToken('');
-
   setCustomerAccount(null);
+  setCart([]);
+  setCustomerDashboardOpen(false);
 
   setToast('You have been logged out.');
-
 }
 
 
@@ -1927,7 +2062,7 @@ onClick={() => {
 
     {drawer && <div className={`drawer-backdrop fixed inset-0 z-50 flex justify-end ${drawer === 'admin' ? 'owner-backdrop' : 'bg-black/70'}`} onMouseDown={(e) => { if (e.target === e.currentTarget) setDrawer(''); }}><aside className={`drawer-panel h-full w-full max-w-xl overflow-y-auto border-l border-white/15 bg-[#090909] p-5 sm:p-7 ${drawer === 'admin' ? 'owner-panel' : ''}`}><div className="mb-6 flex items-center justify-between border-b border-white/10 pb-4"><div><p className="text-[10px] tracking-[0.2em] text-white/45">URBAN CAT</p><h2 className="mt-1 text-xl font-bold">{drawer === 'cart' ? 'Your bag' : drawer === 'checkout' ? 'Checkout' : 'Store owner'}</h2></div><button onClick={() => { setDrawer(''); if (window.location.pathname === '/owner/login') window.history.pushState({}, '', '/'); }} aria-label="Close panel" className="p-2"><X/></button></div>
 
-      {drawer === 'cart' && <><p className="mb-5 text-sm text-white/50">{cartCount} item(s) in your bag</p>{cart.length === 0 ? <p className="text-sm text-white/50">Your bag is empty.</p> : <><div className="space-y-4">{cart.map((item) => <div key={item.key} className="flex gap-4 border-b border-white/10 pb-4"><div className="product-placeholder h-24 w-20 shrink-0 overflow-hidden">{item.image ? <img src={item.image} alt={item.name} className="h-full w-full object-cover" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = EDITORIAL_IMAGES[0]; }}/> : <img src={EDITORIAL_IMAGES[0]} alt={item.name} className="h-full w-full object-cover"/>}</div><div className="flex-1"><p className="font-semibold">{item.name}</p><p className="mt-1 text-sm text-white/50">Size {item.size} · {item.colour}</p><ProductPrice product={item} className="mt-1 text-sm"/><div className="mt-3 flex items-center gap-3"><button onClick={() => changeQty(item.key, -1)} aria-label="Decrease quantity"><Minus size={15}/></button><span className="text-sm">{item.quantity}</span><button onClick={() => changeQty(item.key, 1)} aria-label="Increase quantity" disabled={item.quantity >= 20}><Plus size={15}/></button><button className="ml-auto text-white/50" onClick={() => setCart((c) => c.filter((x) => x.key !== item.key))} aria-label="Remove item"><Trash2 size={16}/></button></div></div></div>)}</div><div className="mt-6 flex justify-between text-lg font-bold"><span>Subtotal</span><span>₹{cartTotal.toLocaleString('en-IN')}</span></div><p className="mt-2 text-xs text-white/45">Shipping charges and final availability will be confirmed by the store owner.</p><button className="button mt-6 w-full" onClick={() => setDrawer('checkout')}>CONTINUE TO ORDER <ArrowRight className="ml-2 inline" size={15}/></button></>}</>}
+      {drawer === 'cart' && <><p className="mb-5 text-sm text-white/50">{cartCount} item(s) in your bag</p>{cart.length === 0 ? <p className="text-sm text-white/50">Your bag is empty.</p> : <><div className="space-y-4">{cart.map((item) => <div key={item.key} className="flex gap-4 border-b border-white/10 pb-4"><div className="product-placeholder h-24 w-20 shrink-0 overflow-hidden">{item.image ? <img src={item.image} alt={item.name} className="h-full w-full object-cover" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = EDITORIAL_IMAGES[0]; }}/> : <img src={EDITORIAL_IMAGES[0]} alt={item.name} className="h-full w-full object-cover"/>}</div><div className="flex-1"><p className="font-semibold">{item.name}</p><p className="mt-1 text-sm text-white/50">Size {item.size} · {item.colour}</p><ProductPrice product={item} className="mt-1 text-sm"/><div className="mt-3 flex items-center gap-3"><button onClick={() => changeQty(item.key, -1)} aria-label="Decrease quantity"><Minus size={15}/></button><span className="text-sm">{item.quantity}</span><button onClick={() => changeQty(item.key, 1)} aria-label="Increase quantity" disabled={item.quantity >= 20}><Plus size={15}/></button><button className="ml-auto text-white/50" onClick={() => removeCartItem(item.key)} aria-label="Remove item"><Trash2 size={16}/></button></div></div></div>)}</div><div className="mt-6 flex justify-between text-lg font-bold"><span>Subtotal</span><span>₹{cartTotal.toLocaleString('en-IN')}</span></div><p className="mt-2 text-xs text-white/45">Shipping charges and final availability will be confirmed by the store owner.</p><button className="button mt-6 w-full" onClick={() => setDrawer('checkout')}>CONTINUE TO ORDER <ArrowRight className="ml-2 inline" size={15}/></button></>}</>}
 
       {drawer === 'checkout' && <form onSubmit={payWithRazorpay} className="space-y-6">
         <div className="rounded-sm border border-white/10 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-white/10 via-[#101010] to-[#080808] p-5">

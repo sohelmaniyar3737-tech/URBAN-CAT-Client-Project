@@ -7,6 +7,7 @@ import authRoutes from './routes/auth.js';
 import customerAuthRoutes from './routes/customerAuth.js';
 import productRoutes from './routes/products.js';
 import orderRoutes from './routes/orders.js';
+import cartRoutes from './routes/cart.js';
 
 const app = express();
 const port = Number(process.env.PORT || 5000);
@@ -26,6 +27,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/customer-auth', customerAuthRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/cart', cartRoutes);
 app.use((req, res) => res.status(404).json({ message: 'Route not found.' }));
 app.use((error, _req, res, _next) => {
   console.error(error);
